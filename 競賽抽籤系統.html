@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>114年南投縣英語文競賽抽籤系統</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Noto+Sans+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── VARIABLES ── */
+:root {
+  --bg:       #040c18;
+  --bg2:      #071526;
+  --navy:     #0a1f3c;
+  --blue:     #1565c0;
+  --bright:   #1e88e5;
+  --ice:      #4fc3f7;
+  --glow:     #00e5ff;
+  --white:    #ffffff;
+  --dim:      #90caf9;
+  --border:   rgba(79,195,247,0.2);
+  --surface:  rgba(7,21,38,0.95);
+  --tab-h:    50px;
+  --hdr-h:    60px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:'Noto Sans TC','微軟正黑體',sans-serif;background:var(--bg);color:var(--white)}
+button{cursor:pointer;font-family:inherit}
+input[type=file]{display:none}
+
+/* ── SPLASH ── */
+#splash{
+  position:fixed;inset:0;z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:var(--bg);transition:opacity 1s ease;
+}
+#splash.hidden{opacity:0;pointer-events:none}
+#three-canvas{position:absolute;inset:0;display:block}
+
+.splash-content{
+  position:relative;z-index:2;text-align:center;
+  animation:fadeUp 1.4s ease 2.2s both;pointer-events:none;
+}
+#enter-btn{pointer-events:all}
+@keyframes fadeUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+
+.s-title{
+  font-size:clamp(1.5rem,4.5vw,3.4rem);font-weight:900;letter-spacing:.06em;
+  background:linear-gradient(135deg,#fff 20%,var(--ice) 55%,var(--glow));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(0 0 24px rgba(0,229,255,.35));
+  margin-bottom:.3rem;line-height:1.2;
+}
+.s-sub{
+  font-size:clamp(.85rem,2vw,1.3rem);color:var(--dim);font-weight:300;
+  margin:.35rem 0;letter-spacing:.1em;
+}
+.s-divider{
+  width:200px;height:1px;margin:1.2rem auto;
+  background:linear-gradient(90deg,transparent,var(--ice),transparent);
+}
+.enter-btn{
+  margin-top:2rem;padding:.85rem 3.2rem;
+  background:linear-gradient(135deg,var(--blue),var(--bright));
+  color:#fff;border:none;border-radius:50px;
+  font-size:clamp(.9rem,1.8vw,1.15rem);font-weight:700;letter-spacing:.14em;
+  box-shadow:0 0 30px rgba(30,136,229,.5),inset 0 1px 0 rgba(255,255,255,.1);
+  transition:all .3s ease;
+}
+.enter-btn:hover{transform:translateY(-3px);box-shadow:0 0 55px rgba(0,229,255,.65)}
+.enter-btn:active{transform:none}
+
+/* ── EXIT SCREEN ── */
+#exit-screen{
+  position:fixed;inset:0;z-index:300;display:none;
+  align-items:center;justify-content:center;flex-direction:column;
+  background:radial-gradient(ellipse at center,#0a2040 0%,#020810 100%);
+}
+#exit-screen.show{display:flex}
+.exit-msg{
+  font-size:clamp(2rem,6vw,5rem);font-weight:900;letter-spacing:.12em;
+  background:linear-gradient(135deg,#fff,var(--glow));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  animation:pulse 1.6s ease-in-out infinite;
+  filter:drop-shadow(0 0 30px rgba(0,229,255,.5));
+}
+@keyframes pulse{0%,100%{filter:drop-shadow(0 0 20px rgba(0,229,255,.4))}
+                 50%{filter:drop-shadow(0 0 55px rgba(0,229,255,.9))}}
+.exit-sub{color:var(--dim);font-size:1rem;margin-top:1rem;opacity:.7;letter-spacing:.06em}
+
+/* ── APP SHELL ── */
+#app{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  opacity:0;transition:opacity .8s ease;pointer-events:none;
+}
+#app.visible{opacity:1;pointer-events:all}
+
+/* ── HEADER ── */
+#app-header{
+  height:var(--hdr-h);min-height:var(--hdr-h);flex-shrink:0;
+  background:linear-gradient(90deg,#031020,var(--navy),#031020);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 clamp(.8rem,2vw,1.8rem);
+  box-shadow:0 2px 24px rgba(0,0,0,.7);position:relative;z-index:10;
+}
+.hdr-left{display:flex;align-items:center;gap:.8rem}
+.hdr-icon{font-size:1.6rem}
+.hdr-title{
+  font-size:clamp(.9rem,2.2vw,1.4rem);font-weight:700;
+  background:linear-gradient(90deg,#fff,var(--ice));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  white-space:nowrap;
+}
+.hdr-badge{
+  background:rgba(0,229,255,.12);border:1px solid rgba(0,229,255,.3);
+  color:var(--glow);font-size:.65rem;padding:.15rem .5rem;border-radius:4px;
+  white-space:nowrap;display:none;
+}
+@media(min-width:600px){.hdr-badge{display:inline}}
+.hdr-clock{
+  font-family:'Noto Sans Mono',monospace;
+  font-size:clamp(.65rem,1.3vw,.9rem);color:var(--dim);white-space:nowrap;
+}
+
+/* ── TAB NAV ── */
+#tab-nav{
+  height:var(--tab-h);min-height:var(--tab-h);flex-shrink:0;
+  background:var(--bg2);border-bottom:2px solid rgba(21,101,192,.4);
+  display:flex;align-items:flex-end;
+  overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:thin;scrollbar-color:rgba(79,195,247,.2) transparent;
+}
+#tab-nav::-webkit-scrollbar{height:3px}
+#tab-nav::-webkit-scrollbar-thumb{background:rgba(79,195,247,.25);border-radius:2px}
+
+.tab-btn{
+  flex-shrink:0;height:40px;
+  padding:0 clamp(.5rem,1.3vw,1.1rem);
+  background:transparent;border:1px solid transparent;border-bottom:none;
+  border-radius:8px 8px 0 0;
+  color:var(--dim);font-size:clamp(.6rem,1vw,.82rem);font-weight:500;
+  transition:all .22s ease;white-space:nowrap;
+  position:relative;top:1px;
+}
+.tab-btn:hover{color:var(--white);background:rgba(21,101,192,.25)}
+.tab-btn.active{
+  color:var(--white);background:var(--surface);
+  border-color:rgba(79,195,247,.25);font-weight:700;
+}
+.tab-btn.active::after{
+  content:'';position:absolute;bottom:-2px;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--bright),var(--glow));
+}
+.tab-btn.has-data::before{
+  content:'';position:absolute;top:6px;right:6px;
+  width:6px;height:6px;border-radius:50%;
+  background:var(--glow);box-shadow:0 0 5px var(--glow);
+}
+
+/* ── PANELS CONTAINER ── */
+#panels{flex:1;overflow:hidden;position:relative;min-height:0}
+
+.panel{
+  position:absolute;inset:0;display:none;flex-direction:column;
+  padding:clamp(.5rem,1.2vw,.9rem);gap:.55rem;overflow:hidden;
+}
+.panel.active{display:flex}
+
+/* panel title */
+.p-title{
+  display:flex;align-items:center;gap:.6rem;flex-shrink:0;
+  padding-bottom:.45rem;border-bottom:1px solid var(--border);
+  min-height:36px;
+}
+.p-title-text{
+  font-size:clamp(.95rem,1.8vw,1.35rem);font-weight:700;letter-spacing:.04em;
+  background:linear-gradient(90deg,#fff,var(--ice));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+/* button row */
+.btn-row{
+  display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;flex-shrink:0;
+}
+.ab{
+  height:clamp(30px,3.8vh,40px);
+  padding:0 clamp(.5rem,1.2vw,1rem);
+  border:1px solid;border-radius:7px;
+  font-size:clamp(.6rem,1vw,.8rem);font-weight:600;letter-spacing:.04em;
+  display:inline-flex;align-items:center;gap:.3rem;
+  transition:all .2s ease;white-space:nowrap;position:relative;overflow:hidden;
+}
+.ab::before{content:'';position:absolute;inset:0;background:rgba(255,255,255,.07);opacity:0;transition:opacity .2s}
+.ab:hover:not(:disabled)::before{opacity:1}
+.ab:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 5px 18px rgba(0,0,0,.4)}
+.ab:active:not(:disabled){transform:none}
+.ab:disabled{opacity:.28;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+
+.ab-load {background:linear-gradient(135deg,#0d47a1,#1565c0);border-color:#1976d2;color:#fff}
+.ab-rng  {background:linear-gradient(135deg,#00695c,#00796b);border-color:#00897b;color:#fff}
+.ab-ord  {background:linear-gradient(135deg,#4a148c,#6a1b9a);border-color:#7b1fa2;color:#fff}
+.ab-num  {background:linear-gradient(135deg,#1b5e20,#2e7d32);border-color:#388e3c;color:#fff}
+.ab-xl   {background:linear-gradient(135deg,#bf360c,#d84315);border-color:#e64a19;color:#fff}
+.ab-pdf  {background:linear-gradient(135deg,#880e4f,#ad1457);border-color:#c2185b;color:#fff}
+.ab-exit {background:linear-gradient(135deg,#b71c1c,#c62828);border-color:#d32f2f;color:#fff;margin-left:auto}
+
+/* table wrapper */
+.tbl-wrap{
+  flex:1;min-height:0;overflow:auto;border-radius:9px;
+  border:1px solid var(--border);
+  scrollbar-width:thin;scrollbar-color:rgba(79,195,247,.25) transparent;
+}
+.tbl-wrap::-webkit-scrollbar{width:6px;height:6px}
+.tbl-wrap::-webkit-scrollbar-thumb{background:rgba(79,195,247,.25);border-radius:3px}
+
+.dtbl{width:100%;border-collapse:collapse;font-size:clamp(.62rem,1vw,.82rem);font-family:'Noto Sans Mono',monospace}
+.dtbl thead{position:sticky;top:0;z-index:5}
+.dtbl th{
+  background:linear-gradient(180deg,#0d3060,#0a2048);
+  color:var(--ice);font-weight:600;letter-spacing:.04em;
+  padding:.5rem .65rem;text-align:center;
+  border-bottom:2px solid var(--bright);
+  white-space:nowrap;cursor:pointer;user-select:none;
+  position:relative;
+}
+.dtbl th:hover{background:linear-gradient(180deg,var(--blue),#0d3a7a);color:#fff}
+.dtbl th .si{margin-left:.25em;opacity:.45;font-size:.75em}
+.dtbl th.s-asc .si::after{content:'▲';opacity:1}
+.dtbl th.s-desc .si::after{content:'▼';opacity:1}
+.dtbl th:not(.s-asc):not(.s-desc) .si::after{content:'⇅'}
+.dtbl td{
+  padding:.42rem .65rem;text-align:center;
+  border-bottom:1px solid rgba(255,255,255,.03);
+  white-space:nowrap;
+}
+.dtbl tbody tr:nth-child(odd) td {background:rgba(4,18,36,.75)}
+.dtbl tbody tr:nth-child(even) td{background:rgba(8,26,52,.55)}
+.dtbl tbody tr:hover td{background:rgba(21,101,192,.28)}
+.col-hi{color:var(--glow);font-weight:700;text-shadow:0 0 8px rgba(0,229,255,.45)}
+
+/* empty state */
+.empty{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  color:rgba(144,202,249,.2);gap:.8rem;
+}
+.empty-icon{font-size:3.5rem}
+.empty-text{font-size:.9rem;letter-spacing:.1em;font-weight:300}
+
+/* status bar */
+.status-bar{
+  height:22px;flex-shrink:0;display:flex;align-items:center;gap:1rem;
+  font-size:.7rem;color:var(--dim);padding:0 .3rem;
+}
+.s-dot{width:7px;height:7px;border-radius:50%;background:var(--dim);flex-shrink:0}
+.s-dot.on{background:var(--glow);box-shadow:0 0 6px var(--glow)}
+
+/* ── TOAST ── */
+#toasts{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;display:flex;flex-direction:column;gap:.4rem;max-width:340px}
+.toast{
+  padding:.6rem 1rem;border-radius:7px;font-size:.8rem;font-weight:500;
+  box-shadow:0 4px 18px rgba(0,0,0,.5);border-left:3px solid;
+  backdrop-filter:blur(10px);animation:tIn .3s ease;
+}
+.toast.s{background:rgba(27,94,32,.9); border-color:#4caf50;color:#c8e6c9}
+.toast.e{background:rgba(183,28,28,.9);border-color:#f44336;color:#ffcdd2}
+.toast.i{background:rgba(13,71,161,.9);border-color:#2196f3;color:#bbdefb}
+.toast.w{background:rgba(230,81,0,.9); border-color:#ff9800;color:#ffe0b2}
+@keyframes tIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+.toast.out{animation:tOut .3s forwards}
+@keyframes tOut{to{opacity:0;transform:translateX(30px)}}
+
+/* ── SPINNER ── */
+#spin{
+  position:fixed;inset:0;z-index:500;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);
+}
+#spin.on{display:flex}
+.ring{
+  width:56px;height:56px;border-radius:50%;
+  border:4px solid rgba(79,195,247,.15);
+  border-top-color:var(--ice);
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── PDF EXPORT STYLES (移植自 index(1).html) ── */
+.pdf-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  font-family: 'Noto Sans TC', '微軟正黑體', sans-serif;
+  color: #000;
+}
+.pdf-table th {
+  background-color: #1e3a8a;
+  color: white;
+  padding: 8px;
+  border: 1px solid #ddd;
+  font-size: 14px;
+}
+.pdf-table td {
+  padding: 8px;
+  border: 1px solid #ddd;
+  text-align: center;
+  font-size: 12px;
+}
+.pdf-container {
+  display: none;
+  background-color: #ffffff; /* 強制白底以配合 PDF */
+  color: #000000;
+  /* 關鍵修正：移除 absolute 等絕對定位，讓它回到標準文件流 */
+  width: 100%; 
+  min-width: 1000px; /* 確保表格有足夠寬度展開，不被擠壓 */
+  padding: 40px;
+  box-sizing: border-box;
+}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  :root{--hdr-h:50px;--tab-h:44px}
+  .s-title{letter-spacing:.02em}
+  .ab{height:28px;font-size:.58rem;padding:0 .45rem}
+  .dtbl th,.dtbl td{padding:.32rem .4rem;font-size:.6rem}
+  .p-title-text{font-size:.88rem}
+}
+@media(max-width:480px){
+  :root{--hdr-h:44px;--tab-h:38px}
+  .hdr-title{font-size:.8rem}
+  .ab-exit{margin-left:0}
+}
+</style>
+</head>
+<body>
+
+<!-- ═════════════════════ SPLASH ═════════════════════ -->
+<div id="splash">
+  <canvas id="three-canvas"></canvas>
+  <div class="splash-content">
+    <div class="s-title">114年南投縣英語文競賽</div>
+    <div class="s-title" style="font-size:clamp(1.2rem,3.5vw,2.8rem)">抽　　籤　　系　　統</div>
+    <div class="s-divider"></div>
+    <div class="s-sub">南投縣政府教育處　指導</div>
+    <div class="s-sub">營北國中　製作</div>
+    <button class="enter-btn" id="enter-btn" onclick="enterApp()">▶ 進　入　系　統</button>
+  </div>
+</div>
+
+<!-- ═════════════════════ EXIT ═════════════════════ -->
+<div id="exit-screen">
+  <div class="exit-msg">謝謝您的愛用</div>
+  <div class="exit-sub">南投縣英語文競賽抽籤系統</div>
+  <div class="exit-sub" id="exit-count" style="margin-top:.5rem;font-size:.85rem"></div>
+</div>
+
+<!-- ═════════════════════ APP ═════════════════════ -->
+<div id="app">
+
+  <div id="app-header">
+    <div class="hdr-left">
+      <span class="hdr-icon">🏆</span>
+      <span class="hdr-title">114年南投縣英語文競賽抽籤系統</span>
+      <span class="hdr-badge">南投縣政府教育處指導</span>
+    </div>
+    <span class="hdr-clock" id="clock"></span>
+  </div>
+
+  <nav id="tab-nav" role="tablist" aria-label="競賽分類"></nav>
+  <div id="panels"></div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toasts"></div>
+
+<!-- SPINNER -->
+<div id="spin"><div class="ring"></div></div>
+
+<!-- PDF 隱藏渲染容器 (移植自 index(1).html) -->
+<div id="pdfContainer" class="pdf-container">
+  <h1 style="text-align: center; font-size: 24px; margin: 20px 0; color: #000;"></h1>
+  <table class="pdf-table">
+      <thead>
+          <tr></tr>
+      </thead>
+      <tbody></tbody>
+  </table>
+</div>
+
+<!-- ═════════════════════ SCRIPT ═════════════════════ -->
+<script>
+/* ─── TAB DEFINITIONS ─── */
+const TABS = [
+  {id:'t01',label:'國小演說(低年級)'},
+  {id:'t02',label:'國小演說(中年級)'},
+  {id:'t03',label:'國小演說(高年級)'},
+  {id:'t04',label:'國小朗讀(低年級)'},
+  {id:'t05',label:'國小朗讀(中年級)'},
+  {id:'t06',label:'國小朗讀(高年級)'},
+  {id:'t07',label:'國中-演說'},
+  {id:'t08',label:'國中-朗讀'},
+  {id:'t09',label:'國中-拼字'},
+  {id:'t10',label:'高中-演說'},
+  {id:'t11',label:'高中-朗讀'},
+  {id:'t12',label:'高中-辯論'},
+];
+
+/* ─── STATE ─── */
+const state = {};
+TABS.forEach(t => {
+  state[t.id] = { df:null, cols:[], title:t.label, sCol:null, sDir:'asc' };
+});
+let activeId = TABS[0].id;
+
+/* ══════════════════════════════════════════
+   THREE.JS PARTICLE SPLASH
+══════════════════════════════════════════ */
+(function(){
+  const canvas = document.getElementById('three-canvas');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x040c18, 1);
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
+  camera.position.z = 90;
+
+  function resize(){
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  /* ── build particles ── */
+  const N = 3000;
+  const pos = new Float32Array(N*3);
+  const col = new Float32Array(N*3);
+  const targets = new Float32Array(N*3);
+  const speeds  = new Float32Array(N);
+
+  const palette = [
+    [0.31,0.76,0.97],[0.12,0.52,0.90],[0.00,0.90,1.00],[0.56,0.85,1.00],[0.18,0.40,0.80]
+  ];
+
+  for(let i=0;i<N;i++){
+    /* start positions: spherical shell far away */
+    const r   = 180 + Math.random()*160;
+    const th  = Math.random()*Math.PI*2;
+    const ph  = Math.random()*Math.PI;
+    pos[i*3]  = r*Math.sin(ph)*Math.cos(th);
+    pos[i*3+1]= r*Math.sin(ph)*Math.sin(th);
+    pos[i*3+2]= r*Math.cos(ph)-30;
+
+    /* targets: cloud in front of camera */
+    targets[i*3]  = (Math.random()-.5)*110;
+    targets[i*3+1]= (Math.random()-.5)*55;
+    targets[i*3+2]= (Math.random()-.5)*35;
+
+    speeds[i] = 0.025 + Math.random()*0.03;
+
+    const c = palette[Math.floor(Math.random()*palette.length)];
+    col[i*3]=c[0]; col[i*3+1]=c[1]; col[i*3+2]=c[2];
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col,3));
+
+  const mat = new THREE.PointsMaterial({
+    size:0.95, vertexColors:true,
+    transparent:true, opacity:0.88,
+    sizeAttenuation:true,
+  });
+  const pts = new THREE.Points(geo, mat);
+  scene.add(pts);
+
+  /* subtle star field */
+  const sN=600, sPos=new Float32Array(sN*3);
+  for(let i=0;i<sN;i++){sPos[i*3]=(Math.random()-.5)*600;sPos[i*3+1]=(Math.random()-.5)*400;sPos[i*3+2]=(Math.random()-.5)*200-50}
+  const sGeo=new THREE.BufferGeometry();
+  sGeo.setAttribute('position',new THREE.BufferAttribute(sPos,3));
+  const sMat=new THREE.PointsMaterial({size:0.35,color:0x4fc3f7,transparent:true,opacity:0.35});
+  scene.add(new THREE.Points(sGeo,sMat));
+
+  let t=0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t += 0.016;
+    const p = geo.attributes.position.array;
+    const gathered = t > 2.8;
+
+    for(let i=0;i<N;i++){
+      const ix=i*3,iy=i*3+1,iz=i*3+2;
+      if(!gathered){
+        p[ix]  += (targets[ix]  - p[ix])  * speeds[i];
+        p[iy]  += (targets[iy]  - p[iy])  * speeds[i];
+        p[iz]  += (targets[iz]  - p[iz])  * speeds[i];
+      } else {
+        p[ix]  += Math.sin(t*.28+i*.013)*.04;
+        p[iy]  += Math.cos(t*.22+i*.015)*.03;
+        p[iz]  += Math.sin(t*.18+i*.009)*.025;
+      }
+    }
+    geo.attributes.position.needsUpdate=true;
+    pts.rotation.y = t*0.07;
+    pts.rotation.x = Math.sin(t*0.04)*0.12;
+    renderer.render(scene,camera);
+  }
+  animate();
+})();
+
+/* ══════════════════════════════════════════
+   CLOCK
+══════════════════════════════════════════ */
+function tick(){
+  const n=new Date(), p=x=>String(x).padStart(2,'0');
+  document.getElementById('clock').textContent=
+    `${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())}  ${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+}
+setInterval(tick,1000); tick();
+
+/* ══════════════════════════════════════════
+   ENTER / EXIT
+══════════════════════════════════════════ */
+function enterApp(){
+  const sp=document.getElementById('splash');
+  sp.classList.add('hidden');
+  setTimeout(()=>sp.remove(),1100);
+  document.getElementById('app').classList.add('visible');
+}
+
+/* 自訂確認對話框（避免瀏覽器封鎖 confirm） */
+function showExit(){
+  const modal = document.getElementById('exit-modal');
+  if(modal) { modal.style.display='flex'; return; }
+
+  const m = document.createElement('div');
+  m.id = 'exit-modal';
+  m.style.cssText = [
+    'position:fixed','inset:0','z-index:1000',
+    'display:flex','align-items:center','justify-content:center',
+    'background:rgba(0,0,0,0.75)','backdrop-filter:blur(6px)'
+  ].join(';');
+  m.innerHTML = `
+    <div style="background:#0a1f3c;border:1px solid rgba(79,195,247,.35);border-radius:14px;
+                padding:2rem 2.5rem;text-align:center;max-width:340px;width:90%;
+                box-shadow:0 0 40px rgba(0,229,255,.2);">
+      <div style="font-size:2rem;margin-bottom:.8rem">🚪</div>
+      <div style="font-size:1.1rem;font-weight:700;margin-bottom:.5rem;color:#fff">確定要結束程式？</div>
+      <div style="font-size:.85rem;color:#90caf9;margin-bottom:1.5rem">感謝您使用本系統</div>
+      <div style="display:flex;gap:.8rem;justify-content:center">
+        <button onclick="doExitConfirm()"
+          style="padding:.6rem 1.8rem;background:linear-gradient(135deg,#b71c1c,#c62828);
+                 color:#fff;border:none;border-radius:8px;font-size:.9rem;font-weight:700;
+                 cursor:pointer;transition:all .2s"
+          onmouseover="this.style.transform='translateY(-2px)'"
+          onmouseout="this.style.transform='none'">確定結束</button>
+        <button onclick="document.getElementById('exit-modal').style.display='none'"
+          style="padding:.6rem 1.8rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
+                 color:#fff;border-radius:8px;font-size:.9rem;font-weight:600;
+                 cursor:pointer;transition:all .2s"
+          onmouseover="this.style.background='rgba(255,255,255,.18)'"
+          onmouseout="this.style.background='rgba(255,255,255,.1)'">取消</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+function doExitConfirm(){
+  document.getElementById('exit-modal').style.display='none';
+  document.getElementById('exit-screen').classList.add('show');
+  let s=5; const el=document.getElementById('exit-count');
+  const iv=setInterval(()=>{
+    el.textContent=`${s} 秒後可關閉此頁面`;
+    if(--s<0){ clearInterval(iv); el.textContent='您可以關閉此視窗'; }
+  },1000);
+}
+
+/* ══════════════════════════════════════════
+   BUILD TABS + PANELS
+══════════════════════════════════════════ */
+const nav    = document.getElementById('tab-nav');
+const panels = document.getElementById('panels');
+
+TABS.forEach((t,idx)=>{
+  /* nav button */
+  const btn = document.createElement('button');
+  btn.className='tab-btn'+(idx===0?' active':'');
+  btn.id='nb-'+t.id;
+  btn.setAttribute('role','tab');
+  btn.setAttribute('aria-selected', idx===0?'true':'false');
+  btn.textContent = t.label;
+  btn.onclick = ()=> switchTab(t.id);
+  nav.appendChild(btn);
+
+  /* panel */
+  const p = document.createElement('div');
+  p.className='panel'+(idx===0?' active':'');
+  p.id='pnl-'+t.id;
+  p.innerHTML = panelHTML(t.id, t.label);
+  panels.appendChild(p);
+
+  /* wire file input */
+  p.querySelector('.fi').addEventListener('change', e=>loadFile(t.id,e));
+});
+
+function panelHTML(id, label){
+  return `
+<div class="p-title">
+  <span style="font-size:1.3rem">🏅</span>
+  <span class="p-title-text" id="pt-${id}">${label}</span>
+</div>
+<div class="btn-row">
+  <input class="fi" type="file" accept=".xlsx,.xls">
+  <button class="ab ab-load"  onclick="trigFile('${id}')">📂 讀取檔案</button>
+  <button class="ab ab-rng"   id="br-${id}"  onclick="doRandom('${id}')"   disabled>🎲 亂數排序</button>
+  <button class="ab ab-ord"   id="bo-${id}"  onclick="doSortOrd('${id}')"  disabled>🔢 依序號排序</button>
+  <button class="ab ab-num"   id="bn-${id}"  onclick="doSortNum('${id}')"  disabled>📋 依編號排序</button>
+  <button class="ab ab-xl"    id="bx-${id}"  onclick="doExcel('${id}')"    disabled>📊 輸出 Excel</button>
+  <button class="ab ab-pdf"   id="bp-${id}"  onclick="doPDF('${id}')"      disabled>📄 輸出 PDF</button>
+  <button class="ab ab-exit"  onclick="showExit()">🚪 結束</button>
+</div>
+<div class="tbl-wrap" id="tw-${id}">
+  <div class="empty"><div class="empty-icon">📂</div><div class="empty-text">請點擊「讀取檔案」載入競賽資料</div></div>
+</div>
+<div class="status-bar">
+  <span class="s-dot" id="sd-${id}"></span>
+  <span id="ss-${id}">尚未載入資料</span>
+</div>`;
+}
+
+function switchTab(id){
+  document.querySelectorAll('.tab-btn').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-selected','false')});
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('nb-'+id).classList.add('active');
+  document.getElementById('nb-'+id).setAttribute('aria-selected','true');
+  document.getElementById('pnl-'+id).classList.add('active');
+  activeId = id;
+}
+
+function trigFile(id){document.querySelector(`#pnl-${id} .fi`).click()}
+
+/* ══════════════════════════════════════════
+   LOAD FILE
+══════════════════════════════════════════ */
+function loadFile(id, e){
+  const file=e.target.files[0]; if(!file) return;
+  e.target.value='';
+  showSpin();
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+
+      if(raw.length<2){toast('檔案內容不足（至少需要標題行+欄位行）','e');hideSpin();return}
+
+      /* Row 0 → title */
+      const compTitle = String(raw[0][0]||'').trim() || state[id].title;
+      document.getElementById('pt-'+id).textContent = compTitle;
+      const navLabel = compTitle.length>10 ? compTitle.slice(0,9)+'…' : compTitle;
+      document.getElementById('nb-'+id).textContent = navLabel;
+      state[id].title = compTitle;
+
+      /* Row 1 → headers：只取有實際文字的欄位，過濾掉空白尾欄 */
+      const rawH = raw[1];
+      // 找出最後一個非空欄的 index
+      let lastNonEmpty = -1;
+      for(let i=rawH.length-1;i>=0;i--){
+        if(rawH[i]!=null && String(rawH[i]).trim()!==''){lastNonEmpty=i;break}
+      }
+      const origH = rawH
+        .slice(0, lastNonEmpty+1)
+        .map((h,i)=>h!=null&&String(h).trim()!==''?String(h).trim():`欄位${i+1}`);
+
+      const hdrs = [...origH];
+      if(!hdrs.includes('亂數值'))  hdrs.push('亂數值');
+      if(!hdrs.includes('上台序號')) hdrs.push('上台序號');
+
+      /* Rows 2+ → data */
+      const df = raw.slice(2)
+        .filter(r=>r.some(c=>c!=null&&c!==''))
+        .map(r=>{
+          const row={};
+          origH.forEach((h,i)=>{ row[h]=r[i]!=null?r[i]:'' });
+          if(!('亂數值'  in row)) row['亂數值']='';
+          if(!('上台序號' in row)) row['上台序號']='';
+          return row;
+        });
+
+      state[id].df   = df;
+      state[id].cols = hdrs;
+      state[id].sCol = null;
+
+      renderTable(id);
+      setBtns(id, false);
+      document.getElementById('sd-'+id).classList.add('on');
+      document.getElementById('ss-'+id).textContent=`已載入 ${df.length} 筆資料`;
+      document.getElementById('nb-'+id).classList.add('has-data');
+      toast(`成功載入 ${df.length} 筆資料`,'s');
+    }catch(err){toast('讀取失敗：'+err.message,'e')}
+    hideSpin();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ══════════════════════════════════════════
+   RENDER TABLE
+══════════════════════════════════════════ */
+function renderTable(id){
+  const {df,cols,sCol,sDir}=state[id];
+  if(!df) return;
+  let h=`<table class="dtbl"><thead><tr>`;
+  cols.forEach(c=>{
+    const sc=sCol===c?(sDir==='asc'?' s-asc':' s-desc'):'';
+    h+=`<th class="${sc}" onclick="colSort('${id}','${esc(c)}')">${escH(c)}<span class="si"></span></th>`;
+  });
+  h+=`</tr></thead><tbody>`;
+  df.forEach(row=>{
+    h+='<tr>';
+    cols.forEach(c=>{
+      const v=row[c]!=null?row[c]:'';
+      const hi=(c==='上台序號'&&v!=='')?'class="col-hi"':'';
+      h+=`<td ${hi}>${escH(String(v))}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+=`</tbody></table>`;
+  document.getElementById('tw-'+id).innerHTML=h;
+}
+
+/* ══════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════ */
+function setBtns(id, hasOrd){
+  const has=!!state[id].df;
+  setB(`br-${id}`, has);
+  setB(`bo-${id}`, has&&hasOrd);
+  setB(`bn-${id}`, has);
+  setB(`bx-${id}`, has);
+  setB(`bp-${id}`, has);
+}
+function setB(id,en){const el=document.getElementById(id);if(el)el.disabled=!en}
+
+/* ── Random Sort ── */
+function doRandom(id){
+  if(!state[id].df) return;
+  showSpin();
+  setTimeout(()=>{
+    const df=state[id].df;
+    const now=Date.now();
+    df.forEach(row=>{
+      row['亂數值']=Math.floor((Math.random()+now/1000)*10000)%100000000;
+    });
+    const sorted=[...df].sort((a,b)=>b['亂數值']-a['亂數值']);
+    const mp=new Map(sorted.map((r,i)=>[r,i+1]));
+    df.forEach(row=>{ row['上台序號']=mp.get(row) });
+    renderTable(id);
+    setBtns(id,true);
+    document.getElementById('ss-'+id).textContent=`亂數排序完成，共 ${df.length} 筆`;
+    toast('亂數排序完成！','s');
+    hideSpin();
+  },60);
+}
+
+/* ── Sort by 上台序號 ── */
+function doSortOrd(id){
+  if(!state[id].df) return;
+  state[id].df.sort((a,b)=>(+a['上台序號']||0)-(+b['上台序號']||0));
+  state[id].sCol='上台序號';state[id].sDir='asc';
+  renderTable(id);toast('已依上台序號排序','i');
+}
+
+/* ── Sort by 編號 ── */
+function doSortNum(id){
+  if(!state[id].df) return;
+  const col=state[id].cols.includes('編號')?'編號':state[id].cols[0];
+  state[id].df.sort((a,b)=>cmp(a[col],b[col]));
+  state[id].sCol=col;state[id].sDir='asc';
+  renderTable(id);toast(`已依「${col}」排序`,'i');
+}
+
+/* ── Sort by column header click ── */
+function colSort(id,col){
+  const st=state[id];
+  if(!st.df) return;
+  if(st.sCol===col) st.sDir=st.sDir==='asc'?'desc':'asc';
+  else{st.sCol=col;st.sDir='asc'}
+  const d=st.sDir==='asc'?1:-1;
+  st.df.sort((a,b)=>cmp(a[col],b[col])*d);
+  renderTable(id);
+}
+
+/* ══════════════════════════════════════════
+   EXPORT EXCEL
+══════════════════════════════════════════ */
+function doExcel(id){
+  const st=state[id]; if(!st.df) return;
+  showSpin();
+  setTimeout(()=>{
+    try{
+      const ws=XLSX.utils.json_to_sheet(st.df,{header:st.cols});
+      /* style header row */
+      st.cols.forEach((c,i)=>{
+        const cell=XLSX.utils.encode_cell({r:0,c:i});
+        if(ws[cell]) ws[cell].s={font:{bold:true},fill:{fgColor:{rgb:'0D47A1'}},font:{color:{rgb:'FFFFFF'}}};
+      });
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,'競賽資料');
+      XLSX.writeFile(wb,`${st.title}_${stamp()}.xlsx`);
+      toast('Excel 匯出成功','s');
+    }catch(e){toast('匯出失敗：'+e.message,'e')}
+    hideSpin();
+  },60);
+}
+
+/* ══════════════════════════════════════════
+   EXPORT PDF  ── 移植自 index(1).html 的處理方式
+══════════════════════════════════════════ */
+async function doPDF(id){
+  const st = state[id];
+  if(!st.df) return;
+
+  if(typeof html2pdf === 'undefined'){
+    toast('html2pdf 尚未載入，請確認網路連線','e'); return;
+  }
+
+  showSpin();
+  try {
+    // 準備 PDF 內容
+    const pdfContainer = document.getElementById('pdfContainer');
+    const pdfTitle = pdfContainer.querySelector('h1');
+    const pdfTable = pdfContainer.querySelector('table');
+    
+    // 設置標題
+    pdfTitle.textContent = st.title;
+    
+    // 設置表格標題
+    const pdfThead = pdfTable.querySelector('thead tr');
+    pdfThead.innerHTML = st.cols.map(header => 
+        `<th>${escH(header)}</th>`
+    ).join('');
+    
+    // 設置表格內容
+    const pdfTbody = pdfTable.querySelector('tbody');
+    pdfTbody.innerHTML = st.df.map(row => `
+        <tr>
+            ${st.cols.map(header => `
+                <td>${escH(row[header] || '')}</td>
+            `).join('')}
+        </tr>
+    `).join('');
+    
+    // 顯示容器以便生成 PDF
+    pdfContainer.style.display = 'block';
+
+    // 【核心修復】徹底排除排版干擾：
+    // 1. 暫時隱藏主程式 UI，讓 DOM 完全由 PDF 容器主導 (不會與 fixed 元素衝突)
+    const appWrapper = document.getElementById('app');
+    appWrapper.style.display = 'none';
+
+    // 2. 解除 html 與 body 的全螢幕鎖定
+    document.documentElement.style.overflow = 'visible';
+    document.documentElement.style.height = 'auto';
+    document.body.style.overflow = 'visible';
+    document.body.style.height = 'auto';
+    
+    // 3. 強制等待瀏覽器完成重繪 (Reflow)，這對於 html2canvas 正確捕捉高度至關重要！
+    await new Promise(resolve => setTimeout(resolve, 300));
+    window.scrollTo(0, 0);
+
+    // 配置 PDF 選項 (與 index(1).html 保持一致)
+    const opt = {
+        margin: 10,
+        filename: `${st.title}抽籤.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            scrollY: 0
+        },
+        jsPDF: { 
+            unit: 'mm', 
+            format: 'a4', 
+            orientation: 'landscape'
+        }
+    };
+    
+    // 生成 PDF
+    await html2pdf().set(opt).from(pdfContainer).save();
+    
+    // 恢復原始狀態
+    pdfContainer.style.display = 'none';
+    appWrapper.style.display = 'flex'; // 恢復主程式 UI
+    document.documentElement.style.overflow = '';
+    document.documentElement.style.height = '';
+    document.body.style.overflow = '';
+    document.body.style.height = '';
+    
+    toast('PDF 匯出成功！', 's');
+  } catch (error) {
+    // 確保發生錯誤時容器被隱藏且恢復排版
+    document.getElementById('pdfContainer').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.documentElement.style.overflow = '';
+    document.documentElement.style.height = '';
+    document.body.style.overflow = '';
+    document.body.style.height = '';
+    toast('匯出PDF錯誤：' + error.message, 'e');
+    console.error('PDF錯誤：', error);
+  }
+  hideSpin();
+}
+
+/* ══════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════ */
+function cmp(a,b){
+  const na=Number(a), nb=Number(b);
+  if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+  return String(a)<String(b)?-1:String(a)>String(b)?1:0;
+}
+function stamp(){
+  const n=new Date(), p=x=>String(x).padStart(2,'0');
+  return `${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}_${p(n.getHours())}${p(n.getMinutes())}`;
+}
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function esc(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+
+/* ── Toast ── */
+function toast(msg, type='i', dur=3200){
+  const w=document.getElementById('toasts');
+  const el=document.createElement('div');
+  el.className=`toast ${type}`; el.textContent=msg; w.appendChild(el);
+  setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),360)},dur);
+}
+
+/* ── Spinner ── */
+function showSpin(){document.getElementById('spin').classList.add('on')}
+function hideSpin(){document.getElementById('spin').classList.remove('on')}
+</script>
+</body>
+</html>
