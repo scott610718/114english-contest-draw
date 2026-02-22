@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>114年南投縣英語文競賽 3D抽籤系統</title>
+
+<!-- 引入所需套件 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- 引入 CSS3DRenderer 以支援原生 DOM 在 3D 空間的顯示與互動 -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<style>
+/* ── 全局與 ROBLOX 風格 VARIABLES ── */
+:root {
+  --roblox-green: #00b06f;
+  --roblox-dark: #232527;
+  --panel-bg: rgba(15, 20, 25, 0.85);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+/* 天空藍背景直接寫在 body，透過透明 WebGL 顯示 */
+body { font-family: 'Segoe UI', '微軟正黑體', sans-serif; overflow: hidden; background: #87CEEB; color: #fff; }
+
+/* ── 3D 容器 (完美圖層遮擋與事件穿透解法) ── */
+/* WebGL 負責畫面，CSS3D 負責按鈕，讓 WebGL 放上層但不阻擋滑鼠 */
+#webgl-container, #css3d-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+#css3d-container { z-index: 1; pointer-events: auto; } 
+#webgl-container { z-index: 2; pointer-events: none; } 
+
+/* DOM 元素樣式，確保按鈕能接收點擊 */
+.css3d-object { backface-visibility: hidden; pointer-events: auto; }
+
+/* ── 十字準星 & 操作提示 ── */
+#hud {
+  position: absolute; top: 20px; left: 20px; z-index: 10;
+  background: rgba(0,0,0,0.6); padding: 15px 20px; border-radius: 8px;
+  font-size: 15px; pointer-events: none; border: 1px solid rgba(255,255,255,0.2);
+  line-height: 1.6;
+}
+.crosshair {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 16px; height: 16px; pointer-events: none; z-index: 10; opacity: 0.8;
+}
+.crosshair::before, .crosshair::after { content: ''; position: absolute; background: white; }
+.crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; }
+.crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; }
+
+/* ── 現代化 進入畫面 (Modern Splash) ── */
+#splash {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 15, 30, 0.85); backdrop-filter: blur(12px);
+}
+.splash-box {
+  background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  color: #fff; padding: 50px 40px; text-align: center;
+  max-width: 550px; width: 90%;
+  animation: modalIn 0.4s ease-out forwards;
+}
+.game-title { 
+  font-size: 32px; font-weight: 900; margin-bottom: 10px; 
+  color: #00e5ff; text-shadow: 0 0 15px rgba(0,229,255,0.4); 
+}
+.game-creator { font-size: 16px; color: #b0bec5; margin-bottom: 35px; }
+.play-btn {
+  background: linear-gradient(135deg, #00b06f, #008f5a);
+  border: none; border-radius: 10px; color: #fff;
+  font-size: 22px; font-weight: bold; padding: 15px 50px;
+  cursor: pointer; transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 176, 111, 0.4);
+  display: inline-flex; align-items: center; gap: 10px; pointer-events: auto;
+}
+.play-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0, 176, 111, 0.6); }
+.play-btn:active { transform: translateY(0); }
+
+/* ── 現代化 斷線/結束畫面 (Modern Exit Screen) ── */
+#exit-screen {
+  position: fixed; inset: 0; z-index: 300; display: none;
+  background: rgba(10, 15, 30, 0.85); backdrop-filter: blur(12px);
+  align-items: center; justify-content: center; pointer-events: auto;
+}
+.exit-box {
+  background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  color: #fff; padding: 50px 40px; text-align: center;
+  max-width: 480px; width: 90%;
+  animation: modalIn 0.4s ease-out forwards;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.exit-icon { font-size: 60px; margin-bottom: 15px; }
+.exit-title { 
+  font-size: 28px; font-weight: 900; margin-bottom: 15px; 
+  color: #00e5ff; text-shadow: 0 0 15px rgba(0,229,255,0.4); 
+}
+.exit-msg { font-size: 16px; color: #b0bec5; line-height: 1.6; margin-bottom: 35px; }
+.leave-btn {
+  background: linear-gradient(135deg, #00b06f, #008f5a);
+  border: none; border-radius: 10px; color: #fff;
+  font-size: 18px; font-weight: bold; padding: 14px 45px;
+  cursor: pointer; transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 176, 111, 0.4);
+}
+.leave-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0, 176, 111, 0.6); }
+.leave-btn:active { transform: translateY(0); }
+
+/* ── 3D 石牆上的 HTML 佈告欄介面 (CSS3D DOM) ── */
+.board-ui {
+  /* 由於 3D 空間放大了兩倍，解析度保持不變即可維持清晰 */
+  width: 1200px; height: 800px; background: var(--panel-bg);
+  padding: 30px; display: flex; flex-direction: column; gap: 20px;
+  color: white; transform-style: preserve-3d; border-radius: 12px;
+}
+.b-title {
+  font-size: 48px; font-weight: bold; text-align: center;
+  text-shadow: 0 4px 10px rgba(0,0,0,0.8);
+  border-bottom: 3px solid var(--roblox-green); padding-bottom: 15px;
+}
+.b-controls { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+.b-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 15px 25px; font-size: 20px; font-weight: bold; border: none; border-radius: 8px;
+  cursor: pointer; color: white; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+}
+.b-btn:active { transform: translateY(4px); box-shadow: none; }
+.b-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-load { background: #2b5c8f; } .btn-load:hover { background: #3a7abf; }
+.btn-rand { background: #00897b; } .btn-rand:hover { background: #009688; }
+.btn-ord  { background: #6a1b9a; } .btn-ord:hover  { background: #7b1fa2; }
+.btn-num  { background: #2e7d32; } .btn-num:hover  { background: #388e3c; }
+.btn-xl   { background: #d84315; } .btn-xl:hover   { background: #e64a19; }
+.btn-pdf  { background: #ad1457; } .btn-pdf:hover  { background: #c2185b; }
+.btn-exit { background: #c62828; } .btn-exit:hover { background: #d32f2f; }
+input[type=file] { display: none; } 
+
+/* 表格區塊 */
+.b-table-wrap {
+  flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); border-radius: 10px;
+  border: 2px solid #555; padding: 10px;
+  scrollbar-width: thin; scrollbar-color: #888 #222;
+}
+.b-table-wrap::-webkit-scrollbar { width: 12px; }
+.b-table-wrap::-webkit-scrollbar-thumb { background: #888; border-radius: 6px; }
+
+.b-table { width: 100%; border-collapse: collapse; font-size: 22px; user-select: text; }
+.b-table th {
+  background: #111; color: var(--roblox-green); padding: 15px;
+  position: sticky; top: -10px; z-index: 2; cursor: pointer; border-bottom: 2px solid #555;
+}
+.b-table td { padding: 12px 15px; text-align: center; border-bottom: 1px solid #333; }
+.b-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+.b-table tbody tr:hover { background: rgba(255,255,255,0.1); }
+.b-empty { display: flex; height: 100%; align-items: center; justify-content: center; font-size: 32px; color: #777; }
+.b-status { font-size: 20px; color: #aaa; text-align: right; }
+.col-hi { color: #ffeb3b; font-weight: bold; }
+
+/* ── 隱藏 PDF 渲染容器 (強制等比版面與斷行版) ── */
+.pdf-container {
+  display: none; background-color: #ffffff; color: #000000;
+  /* 縮小寬度基數至 1040px，確保連同邊界不會超出 A4 橫向物理範圍 */
+  width: 1040px; max-width: 1040px; 
+  padding: 10px 15px; box-sizing: border-box; margin: 0 auto;
+}
+.pdf-table { 
+  width: 100%; border-collapse: collapse; margin: 15px 0; 
+  table-layout: fixed; /* 關鍵：強制平均分配或依內容固定欄寬比例 */
+}
+/* 強制設定首尾欄位的寬度比例 */
+.pdf-table th:first-child, .pdf-table td:first-child { width: 5%; }          /* 第一欄 (通常為編號) */
+.pdf-table th:nth-last-child(2), .pdf-table td:nth-last-child(2) { width: 12%; } /* 倒數第二欄 (亂數值) */
+.pdf-table th:nth-last-child(1), .pdf-table td:nth-last-child(1) { width: 8%; }  /* 最後一欄 (上台序號) */
+
+.pdf-table th { 
+  background-color: #1e3a8a; color: white; padding: 6px 4px; 
+  border: 1px solid #ddd; font-size: 11px; 
+  word-wrap: break-word; overflow-wrap: break-word;
+}
+.pdf-table td { 
+  padding: 6px 4px; border: 1px solid #ddd; text-align: center; 
+  font-size: 10px; 
+  word-break: break-all; /* 強制換行，絕對避免單一長字串撐破欄位 */
+}
+
+/* ── TOAST & SPINNER ── */
+#toasts { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 10px; }
+.toast { padding: 15px 20px; border-radius: 8px; font-size: 16px; font-weight: bold; background: rgba(0,0,0,0.85); color: white; border-left: 5px solid; animation: tIn 0.3s; }
+.toast.s { border-color: #00b06f; } .toast.e { border-color: #f44336; }
+@keyframes tIn { from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+#spin {
+  position: fixed; inset: 0; z-index: 500; display: none;
+  background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+}
+.ring { width: 60px; height: 60px; border-radius: 50%; border: 6px solid #444; border-top-color: var(--roblox-green); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- HUD & Crosshair -->
+<div id="hud">
+  🎮 <b>操作指南</b><br>
+  <span style="color:#00b06f">[W][A][S][D]</span> - 移動角色<br>
+  <span style="color:#00b06f">[按住滑鼠右鍵]</span> - 轉動視角<br>
+  <span style="color:#00b06f">[滑鼠左鍵或按空白鍵]</span> - 點擊公佈欄按鈕
+</div>
+<div class="crosshair"></div>
+
+<!-- 3D 渲染容器 -->
+<div id="css3d-container"></div>
+<div id="webgl-container"></div>
+
+<!-- Splash 進入畫面 -->
+<div id="splash">
+  <div class="splash-box">
+    <div style="font-size: 60px; margin-bottom: 20px;">🏆</div>
+    <div class="game-title">114年南投縣英語文競賽<br>抽籤系統 3D 版</div>
+    <div class="game-creator">By 南投縣政府教育處 / 營北國中</div>
+    <button class="play-btn" onclick="window.startGame()">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg> 進入系統
+    </button>
+  </div>
+</div>
+
+<!-- 現代化 Exit 斷線畫面 -->
+<div id="exit-screen">
+  <div class="exit-box">
+    <div class="exit-icon">👋</div>
+    <div class="exit-title">您已離開系統</div>
+    <div class="exit-msg">
+      感謝您的愛用，所有抽籤資料皆已安全保存於您的本機下載資料夾中。
+      <br><br><span style="opacity:0.5;font-size:12px;font-family:monospace;">(Session Closed Successfully : 277)</span>
+    </div>
+    <button class="leave-btn" onclick="window.close()">關閉視窗 (Close)</button>
+  </div>
+</div>
+
+<!-- PDF 渲染容器 -->
+<div id="pdfContainer" class="pdf-container">
+  <h1 id="pdfTitle" style="text-align: center; font-size: 20px; margin: 15px 0; color: #000;"></h1>
+  <table class="pdf-table">
+      <thead id="pdfThead"><tr></tr></thead>
+      <tbody id="pdfTbody"></tbody>
+  </table>
+</div>
+
+<div id="toasts"></div>
+<div id="spin"><div class="ring"></div></div>
+
+<script>
+/* ══════════════════════════════════════════
+   系統狀態與資料定義
+══════════════════════════════════════════ */
+var TABS = [
+  {id:'t01', label:'國小甲組 朗讀'}, {id:'t02', label:'國小乙組 朗讀'},
+  {id:'t03', label:'國小丙組 朗讀'}, {id:'t04', label:'國小丁組 朗讀'},
+  {id:'t05', label:'國小甲組 說故事'}, {id:'t06', label:'國小乙組 說故事'},
+  {id:'t07', label:'國小丙組 說故事'}, {id:'t08', label:'國小丁組 說故事'},
+  {id:'t09', label:'國中組 朗讀'}, {id:'t10', label:'國中組 演說'},
+  {id:'t11', label:'高中組 朗讀'}, {id:'t12', label:'高中組 演說'}
+];
+
+var state = {};
+TABS.forEach(t => { state[t.id] = { df:null, cols:[], title:t.label, sCol:null, sDir:'asc' }; });
+
+/* ══════════════════════════════════════════
+   3D 引擎全域變數 (第三人稱控制器)
+══════════════════════════════════════════ */
+var scene = null, camera = null, renderer = null, cssRenderer = null;
+var moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+var isDragging = false, previousMousePosition = { x: 0, y: 0 };
+var clock = new THREE.Clock();
+
+// 第三人稱層級架構
+var playerGroup = null;     
+var playerVisuals = null;   
+var cameraRig = null;       
+var pitchObject = null;     
+var leftArm, rightArm, leftLeg, rightLeg;
+
+/* ══════════════════════════════════════════
+   動態產生 擬真草地材質 (高解析度 Canvas)
+══════════════════════════════════════════ */
+function createGrassTexture() {
+  var canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 1024;
+  var ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = '#1e4022'; 
+  ctx.fillRect(0, 0, 1024, 1024);
+  
+  for(var i=0; i<80000; i++) {
+    var x = Math.random() * 1024, y = Math.random() * 1024;
+    var w = Math.random() * 4 + 2, h = Math.random() * 15 + 5;
+    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(46, 125, 50, 0.8)' : 'rgba(27, 94, 32, 0.8)';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w/2, y - h); ctx.lineTo(x + w, y); ctx.fill();
+  }
+
+  for(var j=0; j<100; j++) {
+    ctx.fillStyle = 'rgba(100, 90, 80, 0.6)';
+    ctx.beginPath(); ctx.arc(Math.random()*1024, Math.random()*1024, Math.random()*4+1, 0, Math.PI*2); ctx.fill();
+  }
+
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(40, 40); 
+  return tex;
+}
+
+/* ══════════════════════════════════════════
+   建立 3D Roblox 經典人物模型 (修改材質貼圖版)
+══════════════════════════════════════════ */
+// 初始化材質載入器
+var textureLoader = new THREE.TextureLoader();
+
+// 【範例】：預先載入您準備好的貼圖 (請替換為您實際的圖片路徑)
+// var skinTexture = textureLoader.load('path/to/skin_texture.jpg');
+// var shirtTexture = textureLoader.load('path/to/shirt_texture.jpg');
+// var pantsTexture = textureLoader.load('path/to/pants_texture.jpg');
+// var shoeTexture = textureLoader.load('path/to/shoe_texture.jpg');
+
+function createLimb(w, h, d, upperMaterial, lowerMaterial, pivotY) {
+  var group = new THREE.Group(); group.position.y = pivotY; 
+  var upper = new THREE.Mesh(new THREE.BoxGeometry(w, h*0.6, d), upperMaterial);
+  upper.position.y = -(h*0.6)/2; upper.castShadow = true; group.add(upper);
+  
+  var lower = new THREE.Mesh(new THREE.BoxGeometry(w*1.02, h*0.4, d*1.02), lowerMaterial);
+  lower.position.y = -h*0.6 - (h*0.4)/2; lower.castShadow = true; group.add(lower);
+  return group;
+}
+
+function createPlayer() {
+  playerGroup = new THREE.Group(); 
+  // 讓玩家初始站在中間稍微偏後的位置，以便看見兩側的石牆
+  playerGroup.position.set(0, 0, 15);
+  scene.add(playerGroup);
+  
+  playerVisuals = new THREE.Group(); playerGroup.add(playerVisuals);
+
+  var matSkin = new THREE.MeshStandardMaterial({ 
+    color: 0xf1c40f, 
+    roughness: 0.6,
+    // map: skinTexture  
+  });
+  
+  var matShirt = new THREE.MeshStandardMaterial({ 
+    color: 0x5d4037, 
+    roughness: 0.8,
+    // map: shirtTexture 
+  });
+
+  var matPants = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.8,
+    // map: pantsTexture 
+  });
+
+  var matShoes = new THREE.MeshStandardMaterial({
+    color: 0xdddddd,
+    roughness: 0.8,
+    // map: shoeTexture  
+  });
+
+  var torso = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 1), matShirt);
+  torso.position.y = 3; torso.castShadow = true; playerVisuals.add(torso);
+
+  var head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), matSkin);
+  head.position.y = 4.6; head.castShadow = true; playerVisuals.add(head);
+
+  leftArm = createLimb(0.9, 2, 0.9, matShirt, matSkin, 4); leftArm.position.x = -1.55; playerVisuals.add(leftArm);
+  rightArm = createLimb(0.9, 2, 0.9, matShirt, matSkin, 4); rightArm.position.x = 1.55; playerVisuals.add(rightArm);
+  
+  leftLeg = createLimb(0.95, 2, 0.95, matPants, matShoes, 2); leftLeg.position.x = -0.55; playerVisuals.add(leftLeg);
+  rightLeg = createLimb(0.95, 2, 0.95, matPants, matShoes, 2); rightLeg.position.x = 0.55; playerVisuals.add(rightLeg);
+
+  cameraRig = new THREE.Group(); playerGroup.add(cameraRig);
+  pitchObject = new THREE.Group(); cameraRig.add(pitchObject);
+
+  camera.position.set(0, 4, 12); camera.lookAt(0, 2.5, 0); 
+  pitchObject.add(camera);
+}
+
+function generateEnvironment() {
+  var rockGeo = new THREE.DodecahedronGeometry(1.5, 0);
+  var rockMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 });
+  var trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4);
+  var trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3623, roughness: 1 });
+  var leavesGeo = new THREE.ConeGeometry(3, 8, 5);
+  var leavesMat = new THREE.MeshStandardMaterial({ color: 0x1e5e1f, roughness: 0.9 });
+
+  for(var i=0; i<150; i++) {
+    var rock = new THREE.Mesh(rockGeo, rockMat);
+    var rx = (Math.random() - 0.5) * 800;
+    var rz = (Math.random() - 0.5) * 400;
+    if (rx > -220 && rx < 220 && rz > -40 && rz < 50) { rz += Math.sign(rz) * 60; }
+    rock.position.set(rx, 0.5, rz);
+    rock.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+    rock.scale.set(1+Math.random()*1.5, 1+Math.random(), 1+Math.random()*1.5);
+    rock.castShadow = true; rock.receiveShadow = true; scene.add(rock);
+
+    var tree = new THREE.Group();
+    var tx = (Math.random() - 0.5) * 800;
+    var tz = (Math.random() - 0.5) * 400;
+    if (tx > -220 && tx < 220 && tz > -40 && tz < 50) { tz += Math.sign(tz) * 60; }
+    tree.position.set(tx, 0, tz);
+    
+    var trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 2; trunk.castShadow = true; trunk.receiveShadow = true; tree.add(trunk);
+    
+    var leaves = new THREE.Mesh(leavesGeo, leavesMat);
+    leaves.position.y = 7; leaves.castShadow = true; leaves.receiveShadow = true; tree.add(leaves);
+    
+    scene.add(tree);
+  }
+}
+
+/* ══════════════════════════════════════════
+   系統初始化
+══════════════════════════════════════════ */
+function init3D() {
+  var w = window.innerWidth, h = window.innerHeight;
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x87CEEB, 20, 150);
+
+  camera = new THREE.PerspectiveCamera(60, w/h, 0.1, 1000);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x000000, 0); 
+  renderer.shadowMap.enabled = true;
+  document.getElementById('webgl-container').appendChild(renderer.domElement);
+
+  cssRenderer = new THREE.CSS3DRenderer();
+  cssRenderer.setSize(w, h);
+  document.getElementById('css3d-container').appendChild(cssRenderer.domElement);
+
+  var ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+  var dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+  dirLight.position.set(50, 100, -50);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.near = 0.5; dirLight.shadow.camera.far = 300;
+  dirLight.shadow.camera.left = -100; dirLight.shadow.camera.right = 100;
+  dirLight.shadow.camera.top = 100; dirLight.shadow.camera.bottom = -100;
+  scene.add(dirLight);
+
+  var floorGeo = new THREE.PlaneGeometry(1000, 600);
+  var floorMat = new THREE.MeshStandardMaterial({ map: createGrassTexture(), roughness: 1 });
+  var floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  createPlayer();
+  generateEnvironment();
+  buildStoneBoards();
+
+  window.addEventListener('resize', onWindowResize);
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('mousedown', e => { if (e.button === 2) isDragging = true; });
+  document.addEventListener('mouseup', e => { if (e.button === 2) isDragging = false; });
+  document.addEventListener('mousemove', onMouseMove);
+
+  animate();
+}
+
+/* ══════════════════════════════════════════
+   建造 12 面相連石牆 (放大2倍 + 直線排列 + 打洞遮罩)
+══════════════════════════════════════════ */
+function buildStoneBoards() {
+  var boardWidth = 24.4, boardHeight = 16.4;
+  var scaleRatio = 0.02; 
+  var sides = 12;
+  var step = 32; 
+  var startX = -((sides - 1) * step) / 2; 
+
+  TABS.forEach((tab, i) => {
+    var x = startX + i * step;
+    var z = -20;
+
+    var wallGroup = new THREE.Group();
+    wallGroup.position.set(x, boardHeight/2 + 1, z);
+    
+    var frameGeo = new THREE.BoxGeometry(boardWidth + 2.4, boardHeight + 2.4, 0.8);
+    var frameMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
+    var frame = new THREE.Mesh(frameGeo, frameMat);
+    frame.castShadow = true;
+    wallGroup.add(frame);
+
+    var baseGeo = new THREE.BoxGeometry(boardWidth + 3.6, 2.4, 2.4);
+    var baseMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 1 });
+    var base = new THREE.Mesh(baseGeo, baseMat);
+    base.position.y = -boardHeight/2 - 0.4; 
+    base.castShadow = true;
+    wallGroup.add(base);
+
+    var screenGeo = new THREE.PlaneGeometry(boardWidth, boardHeight);
+    var screenMat = new THREE.MeshBasicMaterial({ color: 0x000000, colorWrite: false });
+    var screen = new THREE.Mesh(screenGeo, screenMat);
+    screen.position.z = 0.42; 
+    screen.renderOrder = -1;  
+    wallGroup.add(screen);
+
+    scene.add(wallGroup);
+
+    var div = document.createElement('div');
+    div.className = 'board-ui css3d-object';
+    div.innerHTML = generateBoardHTML(tab.id, tab.label);
+    
+    var fi = div.querySelector(`#fi-${tab.id}`);
+    div.querySelector('.btn-load').addEventListener('click', () => fi.click());
+    fi.addEventListener('change', (e) => window.loadFile(tab.id, e));
+
+    div.querySelector(`#br-${tab.id}`).addEventListener('click', () => window.doRandom(tab.id));
+    div.querySelector(`#bo-${tab.id}`).addEventListener('click', () => window.doSortOrd(tab.id));
+    div.querySelector(`#bn-${tab.id}`).addEventListener('click', () => window.doSortNum(tab.id));
+    div.querySelector(`#bx-${tab.id}`).addEventListener('click', () => window.doExcel(tab.id));
+    div.querySelector(`#bp-${tab.id}`).addEventListener('click', () => window.doPDF(tab.id));
+    div.querySelector('.btn-exit').addEventListener('click', () => window.showExit());
+
+    var cssObj = new THREE.CSS3DObject(div);
+    cssObj.position.set(x, boardHeight/2 + 1, z);
+    cssObj.translateZ(0.42); 
+    cssObj.scale.set(scaleRatio, scaleRatio, scaleRatio);
+    scene.add(cssObj);
+  });
+}
+
+function generateBoardHTML(id, label) {
+  return `
+    <div class="b-title">${label}</div>
+    <div class="b-controls">
+      <input class="fi" id="fi-${id}" type="file" accept=".xlsx,.xls">
+      <button class="b-btn btn-load">📂 讀取名單</button>
+      <button class="b-btn btn-rand" id="br-${id}" disabled>🎲 亂數排序</button>
+      <button class="b-btn btn-ord"  id="bo-${id}" disabled>🔢 依上台序</button>
+      <button class="b-btn btn-num"  id="bn-${id}" disabled>📋 依編號</button>
+      <button class="b-btn btn-xl"   id="bx-${id}" disabled>📊 下載 Excel</button>
+      <button class="b-btn btn-pdf"  id="bp-${id}" disabled>📄 下載 PDF</button>
+      <button class="b-btn btn-exit">🚪 離開系統</button>
+    </div>
+    <div class="b-table-wrap" id="tw-${id}">
+      <div class="b-empty">請點擊「讀取名單」載入 Excel 檔案</div>
+    </div>
+    <div class="b-status" id="ss-${id}">尚未載入資料</div>
+  `;
+}
+
+/* ══════════════════════════════════════════
+   第三人稱玩家控制邏輯
+══════════════════════════════════════════ */
+function onKeyDown(event) {
+  switch (event.code) {
+    case 'KeyW': moveForward = true; break;
+    case 'KeyA': moveLeft = true; break;
+    case 'KeyS': moveBackward = true; break;
+    case 'KeyD': moveRight = true; break;
+  }
+}
+function onKeyUp(event) {
+  switch (event.code) {
+    case 'KeyW': moveForward = false; break;
+    case 'KeyA': moveLeft = false; break;
+    case 'KeyS': moveBackward = false; break;
+    case 'KeyD': moveRight = false; break;
+  }
+}
+
+function onMouseMove(event) {
+  if (!isDragging) { previousMousePosition = { x: event.clientX, y: event.clientY }; return; }
+  var deltaX = event.clientX - previousMousePosition.x;
+  var deltaY = event.clientY - previousMousePosition.y;
+  previousMousePosition = { x: event.clientX, y: event.clientY };
+
+  cameraRig.rotation.y -= deltaX * 0.003;
+  pitchObject.rotation.x -= deltaY * 0.003;
+  pitchObject.rotation.x = Math.max(-Math.PI/6, Math.min(Math.PI/6, pitchObject.rotation.x));
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  var t = clock.getElapsedTime();
+  var delta = 0.016; 
+
+  if(playerGroup && cameraRig) {
+    var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraRig.quaternion);
+    forward.y = 0; forward.normalize();
+    var right = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraRig.quaternion);
+    right.y = 0; right.normalize();
+
+    var moveDir = new THREE.Vector3();
+    if (moveForward) moveDir.add(forward);
+    if (moveBackward) moveDir.sub(forward);
+    if (moveLeft) moveDir.sub(right);
+    if (moveRight) moveDir.add(right);
+
+    var isMoving = moveDir.lengthSq() > 0;
+    
+    if (isMoving) {
+      moveDir.normalize();
+      playerGroup.position.add(moveDir.multiplyScalar(30 * delta));
+
+      var targetAngle = Math.atan2(moveDir.x, moveDir.z) + Math.PI; 
+      var diff = targetAngle - playerVisuals.rotation.y;
+      while(diff < -Math.PI) diff += Math.PI * 2;
+      while(diff > Math.PI) diff -= Math.PI * 2;
+      playerVisuals.rotation.y += diff * 12 * delta;
+
+      var swing = Math.sin(t * 18) * 0.9;
+      leftArm.rotation.x = swing; rightArm.rotation.x = -swing;
+      leftLeg.rotation.x = -swing; rightLeg.rotation.x = swing;
+      playerVisuals.position.y = Math.abs(Math.sin(t * 18)) * 0.3; 
+    } else {
+      var swing = Math.sin(t * 3) * 0.1;
+      leftArm.rotation.x = swing; rightArm.rotation.x = -swing;
+      leftLeg.rotation.x = 0; rightLeg.rotation.x = 0;
+      playerVisuals.position.y = Math.sin(t * 2) * 0.05;
+    }
+
+    var pos = playerGroup.position;
+    if (pos.x < -220) pos.x = -220;
+    if (pos.x > 220) pos.x = 220;
+    if (pos.z < -13) pos.z = -13; 
+    if (pos.z > 100) pos.z = 100;
+  }
+
+  renderer.render(scene, camera);
+  cssRenderer.render(scene, camera);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  cssRenderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/* ══════════════════════════════════════════
+   核心業務邏輯
+══════════════════════════════════════════ */
+window.startGame = function() {
+  document.getElementById('splash').style.display = 'none';
+  if (typeof scene === 'undefined' || !scene) init3D();
+};
+
+window.showExit = function() {
+  document.getElementById('exit-screen').style.display = 'flex';
+};
+
+window.setBtns = function(id, enable, hasOrd) {
+  ['br', 'bx', 'bp', 'bn'].forEach(prefix => {
+    var el = document.getElementById(`${prefix}-${id}`);
+    if(el) el.disabled = !enable;
+  });
+  var ordEl = document.getElementById(`bo-${id}`);
+  if(ordEl) ordEl.disabled = !(enable && hasOrd);
+};
+
+window.loadFile = function(id, e) {
+  var file = e.target.files[0]; if(!file) return;
+  e.target.value = ''; 
+  showSpin();
+  
+  var reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      var wb = XLSX.read(ev.target.result, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+      if(raw.length < 2) throw new Error('檔案內容不足（需標題與欄位）');
+
+      var compTitle = String(raw[0][0]||'').trim() || state[id].title;
+      state[id].title = compTitle;
+
+      var rawH = raw[1];
+      var lastNonEmpty = -1;
+      for(var i=rawH.length-1; i>=0; i--){
+        if(rawH[i]!=null && String(rawH[i]).trim()!==''){ lastNonEmpty=i; break; }
+      }
+      var origH = rawH.slice(0, lastNonEmpty+1).map((h,i)=>h!=null&&String(h).trim()!==''?String(h).trim():`欄位${i+1}`);
+
+      var hdrs = [...origH];
+      if(!hdrs.includes('亂數值')) hdrs.push('亂數值');
+      if(!hdrs.includes('上台序號')) hdrs.push('上台序號');
+
+      var df = raw.slice(2).filter(r=>r.some(c=>c!=null&&c!=='')).map(r=>{
+        var row={};
+        origH.forEach((h,i)=>{ row[h]=r[i]!=null?r[i]:'' });
+        if(!('亂數值' in row)) row['亂數值']='';
+        if(!('上台序號' in row)) row['上台序號']='';
+        return row;
+      });
+
+      state[id].df = df;
+      state[id].cols = hdrs;
+      state[id].sCol = null;
+
+      window.renderTable(id);
+      window.setBtns(id, true, false);
+      document.getElementById('ss-'+id).textContent = `已成功載入 ${df.length} 筆資料`;
+      toast(`成功載入 ${df.length} 筆資料`, 's');
+    } catch(err) {
+      toast('讀取失敗：' + err.message, 'e');
+    }
+    hideSpin();
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+window.renderTable = function(id) {
+  var { df, cols, sCol, sDir } = state[id];
+  if(!df) return;
+  var h = `<table class="b-table"><thead><tr>`;
+  cols.forEach(c => {
+    var icon = sCol===c ? (sDir==='asc'?'▲':'▼') : '⇅';
+    h += `<th onclick="window.colSort('${id}','${esc(c)}')">${escH(c)} <span style="font-size:14px;opacity:0.6">${icon}</span></th>`;
+  });
+  h += `</tr></thead><tbody>`;
+  df.forEach(row => {
+    h += '<tr>';
+    cols.forEach(c => {
+      var v = row[c] != null ? row[c] : '';
+      var hi = (c === '上台序號' && v !== '') ? 'class="col-hi"' : '';
+      h += `<td ${hi}>${escH(String(v))}</td>`;
+    });
+    h += '</tr>';
+  });
+  h += `</tbody></table>`;
+  document.getElementById('tw-'+id).innerHTML = h;
+};
+
+window.colSort = function(id, col) {
+  var st = state[id]; if(!st.df) return;
+  if(st.sCol === col) st.sDir = st.sDir === 'asc' ? 'desc' : 'asc';
+  else { st.sCol = col; st.sDir = 'asc'; }
+  var d = st.sDir === 'asc' ? 1 : -1;
+  st.df.sort((a,b) => cmp(a[col], b[col]) * d);
+  window.renderTable(id);
+};
+
+window.doRandom = function(id) {
+  var st = state[id]; if(!st.df) return;
+  showSpin();
+  setTimeout(() => {
+    var df = st.df;
+    var now = Date.now();
+    df.forEach(row => { row['亂數值'] = Math.floor((Math.random() + now/1000) * 10000) % 100000000; });
+    var sorted = [...df].sort((a,b) => b['亂數值'] - a['亂數值']);
+    var mp = new Map(sorted.map((r,i) => [r, i+1]));
+    df.forEach(row => { row['上台序號'] = mp.get(row); });
+    window.renderTable(id);
+    window.setBtns(id, true, true);
+    document.getElementById('ss-'+id).textContent = `亂數排序完成，共 ${df.length} 筆`;
+    toast('亂數抽籤完成！', 's');
+    hideSpin();
+  }, 200);
+};
+
+window.doSortOrd = function(id) {
+  var st = state[id]; if(!st.df) return;
+  st.df.sort((a,b) => (+a['上台序號']||0) - (+b['上台序號']||0));
+  st.sCol = '上台序號'; st.sDir = 'asc';
+  window.renderTable(id); toast('已依上台序號排序');
+};
+
+window.doSortNum = function(id) {
+  var st = state[id]; if(!st.df) return;
+  var col = st.cols.includes('編號') ? '編號' : st.cols[0];
+  st.df.sort((a,b) => cmp(a[col], b[col]));
+  st.sCol = col; st.sDir = 'asc';
+  window.renderTable(id); toast(`已依「${col}」排序`);
+};
+
+window.doExcel = function(id) {
+  var st = state[id]; if(!st.df) return;
+  showSpin();
+  setTimeout(() => {
+    try {
+      var ws = XLSX.utils.json_to_sheet(st.df, {header: st.cols});
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '競賽資料');
+      XLSX.writeFile(wb, `${st.title}_抽籤結果.xlsx`);
+      toast('Excel 下載成功', 's');
+    } catch(e) { toast('匯出失敗', 'e'); }
+    hideSpin();
+  }, 200);
+};
+
+window.doPDF = async function(id) {
+  var st = state[id]; if(!st.df) return;
+  showSpin();
+  try {
+    document.getElementById('pdfTitle').textContent = st.title;
+    document.getElementById('pdfThead').innerHTML = `<tr>${st.cols.map(c => `<th>${escH(c)}</th>`).join('')}</tr>`;
+    document.getElementById('pdfTbody').innerHTML = st.df.map(r => `<tr>${st.cols.map(c => `<td>${escH(r[c]||'')}</td>`).join('')}</tr>`).join('');
+    
+    var container = document.getElementById('pdfContainer');
+    container.style.display = 'block';
+
+    document.getElementById('webgl-container').style.display = 'none';
+    document.getElementById('css3d-container').style.display = 'none';
+
+    await new Promise(r => setTimeout(r, 100)); 
+    
+    var opt = {
+      margin: [10, 5, 10, 5], 
+      filename: `${st.title}_抽籤.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+    
+    await html2pdf().set(opt).from(container).save();
+    
+    container.style.display = 'none';
+    document.getElementById('webgl-container').style.display = 'block';
+    document.getElementById('css3d-container').style.display = 'block';
+    toast('PDF 下載成功', 's');
+  } catch(e) {
+    var container = document.getElementById('pdfContainer');
+    container.style.display = 'none';
+    document.getElementById('webgl-container').style.display = 'block';
+    document.getElementById('css3d-container').style.display = 'block';
+    toast('PDF 匯出失敗', 'e');
+  }
+  hideSpin();
+};
+
+/* ══════════════════════════════════════════
+   輔助函式
+══════════════════════════════════════════ */
+function cmp(a,b) { var na=Number(a), nb=Number(b); return (!isNaN(na)&&!isNaN(nb)) ? na-nb : String(a).localeCompare(String(b)); }
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function showSpin() { document.getElementById('spin').style.display = 'flex'; }
+function hideSpin() { document.getElementById('spin').style.display = 'none'; }
+function toast(msg, type='s') {
+  var t = document.createElement('div');
+  t.className = `toast ${type}`; t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => { t.style.animation = 'tIn 0.3s reverse forwards'; setTimeout(()=>t.remove(), 300); }, 3000);
+}
+</script>
+</body>
+</html>
