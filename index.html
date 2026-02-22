@@ -56,7 +56,7 @@ input[type=file]{display:none}
   margin-bottom:.3rem;line-height:1.2;
 }
 .s-sub{
-  font-size:clamp(.85rem,2vw,1.3rem);color:var(--dim);font-weight:300;
+  font-size:clamp(1.5rem,4.5vw,3.4rem);color:var(--dim);font-weight:600;
   margin:.35rem 0;letter-spacing:.1em;
 }
 .s-divider{
@@ -397,18 +397,18 @@ input[type=file]{display:none}
 <script>
 /* ─── TAB DEFINITIONS ─── */
 const TABS = [
-  {id:'t01',label:'國小演說(低年級)'},
-  {id:'t02',label:'國小演說(中年級)'},
-  {id:'t03',label:'國小演說(高年級)'},
-  {id:'t04',label:'國小朗讀(低年級)'},
-  {id:'t05',label:'國小朗讀(中年級)'},
-  {id:'t06',label:'國小朗讀(高年級)'},
-  {id:'t07',label:'國中-演說'},
-  {id:'t08',label:'國中-朗讀'},
-  {id:'t09',label:'國中-拼字'},
-  {id:'t10',label:'高中-演說'},
-  {id:'t11',label:'高中-朗讀'},
-  {id:'t12',label:'高中-辯論'},
+  {id:'t01',label:'國小甲組  朗讀'},
+  {id:'t02',label:'國小乙組  朗讀'},
+  {id:'t03',label:'國小丙組  朗讀'},
+  {id:'t04',label:'國小丁組  朗讀'},
+  {id:'t05',label:'國小甲組  說故事'},
+  {id:'t06',label:'國小乙組  說故事'},
+  {id:'t07',label:'國小丙組  說故事'},
+  {id:'t08',label:'國小丁組  說故事'},
+  {id:'t09',label:'國中組  朗讀'},
+  {id:'t10',label:'國中組  演說'},
+  {id:'t11',label:'高中組  朗讀'},
+  {id:'t12',label:'高中組  演說'},
 ];
 
 /* ─── STATE ─── */
@@ -825,7 +825,7 @@ function doExcel(id){
 }
 
 /* ══════════════════════════════════════════
-   EXPORT PDF  ── 移植自 index(1).html 的處理方式
+   EXPORT PDF  
 ══════════════════════════════════════════ */
 async function doPDF(id){
   const st = state[id];
